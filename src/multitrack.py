@@ -1,4 +1,5 @@
 import numpy as np
+from tqdm import tqdm
 from meanshift import *
 from Kalman_filter import createKalmanFilter
 np.random.seed(0)
@@ -7,12 +8,12 @@ colormap = ['c', 'g', 'r', 'm', 'y', 'b', 'w', 'k']
 shapemap = ['o', '1', 's', 'p', '+', '*', 'x', 'v']
     
 class MultiTrack():
-    def __init__(self, stream, size=(720, 1280), max_clusters=256):
+    def __init__(self, stream, size=(720, 1280), max_clusters=256, bandwidth = 0.15):
         self.events = stream # x, y, t, p
         self.h = size[0]
         self.w = size[1]
         self.packet = 1800
-        self.bandwidth = 0.15 # meanshift bandwidth
+        self.bandwidth = bandwidth # meanshift bandwidth
         self.max_clusters = max_clusters
         self.lastClusterColor = 0
         self.activateEvents = np.zeros(self.events.shape[0], np.bool8)
@@ -86,21 +87,20 @@ class MultiTrack():
         TSmap = np.zeros((self.h, self.w), np.float32) # recording the lastest event timestamp
         cnt = 0
         usTime = 10.0 # in us
-        firsttimestamp = 1e-6*self.events[10, 2]
-        final_timestamp = 1e-6*self.events[-1, 2]
-        activeEvents = np.zeros(len(self.events), np.bool8)
+        firsttimestamp = self.events[0, 2]
+        final_timestamp = self.events[-1, 2] - firsttimestamp
         prev_activeTrajectories = []
         prevclusterCenter = np.empty((0, 3))
         prev_positionClusterColor = np.array([])
         counterIn = 0
-        for start in range(0, len(self.events), self.packet):
+        for start in tqdm(range(0, len(self.events), self.packet)):
             counterOut = 0
             ssize = min(self.packet, len(self.events)-start)
             data = np.zeros((ssize, 3), np.float32)
             for i in range(start, start+ssize):
                 x, y, _, _ = self.events[i]
-                event_timestamp = 1E-6*self.events[counterIn, 2]-firsttimestamp # now in usecs
-                ts = 1E-6*self.events[i, 2] - firsttimestamp
+                event_timestamp = self.events[counterIn, 2]-firsttimestamp # now in usecs
+                ts = self.events[i, 2] - firsttimestamp
                 maxTs = -1
                 # searching the max timestamp in 3x3 neighbor
                 TSmap[y, x] = 0
@@ -121,29 +121,27 @@ class MultiTrack():
                             maxTs = TSmap[posy, posx]
                 TSmap[y, x] = ts
                 # filter the event that the difference between its timestamp and its neighbor biggest timestamp > usTime   
-                # 带有时空领域滤波的效果：排除孤立事件   
                 if TSmap[y, x] >= maxTs + usTime:
-                    activeEvents[counterIn] = False
                     counterIn += 1
                 else:
                     data[counterOut, 0] = x/self.w
                     data[counterOut, 1] = y/self.h
                     tau = 1e+4
-                    data[counterOut, 2] = np.exp((final_timestamp-event_timestamp)/tau) # exponential decay function
+                    data[counterOut, 2] = np.exp(-(final_timestamp-event_timestamp)/tau) # exponential decay function
                     self.activateEvents[counterIn] = True
                     counterOut += 1
                     counterIn += 1
-            last_timestamp = 1E-6*self.events[counterIn-1, 2]
+            last_timestamp = self.events[counterIn-1, 2]
             data = data[:counterOut]
             # events cluster & match
             clusterCenter, p2Cluster = meanShiftCluster_Gaussian(data, self.bandwidth)
             
             if clusterCenter.size == 0:
-                print('Cluster no results in current window.')
+                # print('Cluster no results in current window.')
                 self.reset_variants()
                 continue
             
-            print(f'cluster number {clusterCenter.shape[0]}')
+            # print(f'cluster number {clusterCenter.shape[0]}')
             matching_id = self.findClosestCluster(clusterCenter[:, :2], prevclusterCenter[:, :2])
             
             positionClusterColor = self.assignClusterCOlor(clusterCenter.shape[0], matching_id, prev_positionClusterColor, prev_activeTrajectories)

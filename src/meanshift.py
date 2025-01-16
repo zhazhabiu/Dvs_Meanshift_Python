@@ -42,6 +42,8 @@ def meanShiftCluster_Gaussian(pts, bandwidth, threshold=10):
     clusterCenter = np.empty((0, 3), dtype=np.float32)
     lambda_ = 10.
     p2Cluster = []
+    if num_pts == 0:
+        return clusterCenter, np.array(p2Cluster)
     while(VisitFlag.min() == 0):
         # pick random seed pint
         tmpInd = np.random.choice(np.where(VisitFlag==0)[0])
