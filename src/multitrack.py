@@ -54,7 +54,8 @@ class MultiTrack():
         else:
             for i in range(numClusters):
                 if matches[i]==-1:
-                    while ((self.lastClusterColor & (self.max_clusters-1)) in activeTrajectories): # Check if the new position is being used
+                    # while ((self.lastClusterColor & (self.max_clusters-1)) in activeTrajectories): # Check if the new position is being used
+                    while ((self.lastClusterColor < self.max_clusters-1) and (self.lastClusterColor in activeTrajectories)): # Check if the new position is being used
                         self.lastClusterColor += 1
                     positionClusterColor.append(self.lastClusterColor)
                     self.lastClusterColor += 1
@@ -87,8 +88,6 @@ class MultiTrack():
         TSmap = np.zeros((self.h, self.w), np.float32) # recording the lastest event timestamp
         cnt = 0
         usTime = 10.0 # in us
-        firsttimestamp = self.events[0, 2]
-        final_timestamp = self.events[-1, 2] - firsttimestamp
         prev_activeTrajectories = []
         prevclusterCenter = np.empty((0, 3))
         prev_positionClusterColor = np.array([])
@@ -97,10 +96,12 @@ class MultiTrack():
             counterOut = 0
             ssize = min(self.packet, len(self.events)-start)
             data = np.zeros((ssize, 3), np.float32)
+            firsttimestamp = 1e-6*self.events[start, 2]
+            final_timestamp = 1e-6*self.events[start+ssize-1, 2] - firsttimestamp
             for i in range(start, start+ssize):
                 x, y, _, _ = self.events[i]
-                event_timestamp = self.events[counterIn, 2]-firsttimestamp # now in usecs
-                ts = self.events[i, 2] - firsttimestamp
+                event_timestamp = 1e-6*self.events[counterIn, 2]-firsttimestamp # now in usecs
+                ts = 1e-6*self.events[i, 2] - firsttimestamp
                 maxTs = -1
                 # searching the max timestamp in 3x3 neighbor
                 TSmap[y, x] = 0
@@ -210,6 +211,7 @@ class MultiTrack():
             tmp = self.events[start:start+ssize]
             mask = self.activateEvents[start:start+ssize]
             tmp = tmp[mask]
+            print(f'Batch {cnt}     {len(positionClusterColor)}')
             for i, color in enumerate(positionClusterColor):
                 ind = np.where(p2Cluster==i)[0]
                 if(len(ind))>0:
